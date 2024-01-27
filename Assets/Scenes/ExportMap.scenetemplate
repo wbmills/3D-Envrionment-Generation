@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 13966, guid: 0000000000000000e000000000000000, type: 0}
+  m_Name: ExportMap
+  m_EditorClassIdentifier: 
+  templateScene: {fileID: 102900000, guid: b1ef61f42a55e714d8af493234c16401, type: 3}
+  templateName: Export map empty
+  description: 
+  preview: {fileID: 0}
+  dependencies:
+  - dependency: {fileID: 8574412962073106934, guid: 1ebd2569c86a299449a66be67debb143, type: 2}
+    instantiationMode: 1
+  - dependency: {fileID: 15600000, guid: 92f7094faa9d58f4b9edd438a8579492, type: 2}
+    instantiationMode: 1
+  - dependency: {fileID: 8574412962073106934, guid: 0deb0a29f3ee7a14d939f7322021cb1c, type: 2}
+    instantiationMode: 1
+  - dependency: {fileID: 2800000, guid: 4056084b9d2ffdc478d82e42612231a7, type: 3}
+    instantiationMode: 0
+  - dependency: {fileID: 8574412962073106934, guid: f9c26ff4055f1ad42bc079677d384aeb, type: 2}
+    instantiationMode: 1
+  templatePipeline: {fileID: 0}
+  badge: {fileID: 0}
+  addToDefaults: 0
