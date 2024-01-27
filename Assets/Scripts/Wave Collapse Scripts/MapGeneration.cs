@@ -57,7 +57,6 @@ public class MapGeneration : MonoBehaviour
     //for testing, remove later 
     public GameObject tree;
 
-
     private Terrain mapTerrain;
     private Vector3 terrainCentre;
     private List<GameObject> allObjectsInMap;
@@ -66,6 +65,7 @@ public class MapGeneration : MonoBehaviour
     private MapConfig curConfig;
     private List<Vector3> unusedPoints;
     public bool debug = false;
+    private GameObject[] objectPrefabs;
     Vector3[,] allPoints;
 
     void Start()
@@ -78,9 +78,55 @@ public class MapGeneration : MonoBehaviour
             NewMap();
         }
     }
+
+    private void updatePrefabs()
+    {
+        var all = Resources.LoadAll<GameObject>("Prefabs");
+
+        // remove prefabs that do not have sufficient mesh import settings to be exported later as FBX (read/write = true)
+        List<GameObject> allList = new List<GameObject>();
+        foreach (var p in all)
+        {
+            var potentialMesh = p.TryGetComponent<MeshFilter>(out MeshFilter m);
+            if ((potentialMesh && m.sharedMesh && m.sharedMesh.isReadable) |
+                (p.GetComponentInChildren<MeshFilter>().sharedMesh && p.GetComponentInChildren<MeshFilter>().sharedMesh.isReadable))
+            {
+                allList.Add(p);
+            }
+        }
+        objectPrefabs = new GameObject[allList.Count];
+        int i = 0;
+        foreach (var x in allList)
+        {
+            try
+            {
+                objectPrefabs[i] = (GameObject)x;
+            }
+            catch (Exception)
+            {
+                print($"Object {x} of type {x.GetType()} failed to convert to GameObject");
+            }
+            i++;
+        }
+    }
+
+    public GameObject[] GetAllPrefabs()
+    {
+        updatePrefabs();
+        return objectPrefabs;
+    }
+
     public GameObject[] GetAllObjects()
     {
-        return allObjectsInMap.ToArray();
+        if (allObjectsInMap == null)
+        {
+            print("Object not initialised");
+            return null;
+        }
+        else
+        {
+            return allObjectsInMap.ToArray();
+        }
     }
     public void NewMap(MapConfig m=null)
     {

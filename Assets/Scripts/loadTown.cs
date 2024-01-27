@@ -9,7 +9,6 @@ using UnityEditor;
 
 public class loadTown : MonoBehaviour
 {
-    public utils utilsScript;
     public bool autosave;
     private townGeneration tgScript;
     public string file;
@@ -34,11 +33,9 @@ public class loadTown : MonoBehaviour
 
     void Start()
     {
-        utilsScript = GameObject.Find("SceneManager").GetComponent<utils>();
         autosave = false;
         saveOptions = new List<string>() { "Save 1", "Save 2", "Save 3" };
         file = saveOptions[0];
-        FBXFile = fbxNameInputField.text;
         tgScript = GameObject.Find("EditModeController").GetComponent<townGeneration>();
     }
 
@@ -136,7 +133,6 @@ public class loadTown : MonoBehaviour
     public void loadObjects()
     {
         print("loading...");
-        utilsScript.killMap();
         GameObject[] objectPrefabs = tgScript.objectPrefabs;
         Dictionary<string, GameObject> obDict = new Dictionary<string, GameObject>();
         allTilePositions = new List<Vector3>();
@@ -176,7 +172,6 @@ public class loadTown : MonoBehaviour
 
     public void loadFBX()
     {
-        utilsScript.killMap();
         FBXFile = fbxNameInputField.text;
         PlayerPrefs.SetString("lastFbxFile", FBXFile);
 

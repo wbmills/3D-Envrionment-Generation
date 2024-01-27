@@ -23,9 +23,7 @@ public class editModeController : MonoBehaviour
     public TMP_InputField fileNameInput;
 
     private float scrollSensitivity = 80f;
-    private loadTown ltScript;
     private playerMovement pmScript;
-    private townGeneration tgScript;
     private exportScene exportSceneScript;
     private Dictionary<KeyCode, string> buttons;
     private GameObject[] objectPrefabs;
@@ -36,16 +34,12 @@ public class editModeController : MonoBehaviour
 
     void Start()
     {
-        exportSceneScript = GetComponent<exportScene>();
         curSceneObject = null;
         terrain = null;
         sceneController = GameObject.Find("SceneManager");
         pmScript = sceneController.GetComponent<playerMovement>();
-        ltScript = sceneController.GetComponent<loadTown>();
         camCon = sceneController.GetComponent<cameraController>();
-        tgScript = gameObject.GetComponent<townGeneration>();
         MGScript = gameObject.GetComponent<MapGeneration>();
-        updatePrefabs();
         setButtons();
     }
 
@@ -65,7 +59,7 @@ public class editModeController : MonoBehaviour
 
     private void updatePrefabs()
     {
-        objectPrefabs = tgScript.objectPrefabs;
+        objectPrefabs = MGScript.GetAllPrefabs();
         var tempList = new List<string>();
         foreach (GameObject ob in objectPrefabs)
         {
@@ -92,7 +86,6 @@ public class editModeController : MonoBehaviour
             {KeyCode.Q, "deleteCurrentObject" },
             {KeyCode.Mouse1, "outputCurHit" },
             {KeyCode.E, "spawnObject" },
-            {KeyCode.Mouse2, "callExporttoFBX" },
             {KeyCode.Slash, "updatePrefabs" },
             {KeyCode.Alpha1, "changePrefabSelection" },
             {KeyCode.Comma, "makeObjectSmaller" },
@@ -196,6 +189,11 @@ public class editModeController : MonoBehaviour
 
     private void runEditMode()
     {
+        if (prefabList.options.Count == 0)
+        {
+            updatePrefabs();
+        }
+
         foreach (var buttonMethodDict in buttons)
         {
             if (Input.GetKeyDown(buttonMethodDict.Key))
@@ -317,7 +315,7 @@ public class editModeController : MonoBehaviour
             }
             if (con1 && con2)
             {
-                tgScript.drawWall(wall, con1, con2);
+                //tgScript.drawWall(wall, con1, con2);
             }
         }
     }
