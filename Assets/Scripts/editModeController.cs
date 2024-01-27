@@ -80,16 +80,14 @@ public class editModeController : MonoBehaviour
     private void setButtons()
     {
         buttons = new Dictionary<KeyCode, string>(){
-            {KeyCode.Equals, "zoomIn" },
-            {KeyCode.Minus, "zoomOut" },
+            {KeyCode.Equals, "makeObjectBigger" },
+            {KeyCode.Minus, "makeObjectSmaller" },
             {KeyCode.R, "rotateObject" },
             {KeyCode.Q, "deleteCurrentObject" },
             {KeyCode.Mouse1, "outputCurHit" },
             {KeyCode.E, "spawnObject" },
             {KeyCode.Slash, "updatePrefabs" },
             {KeyCode.Alpha1, "changePrefabSelection" },
-            {KeyCode.Comma, "makeObjectSmaller" },
-            {KeyCode.Period, "makeObjectBigger" },
             {KeyCode.Backspace, "playerSwitch" },
             {KeyCode.Z, "retrieveLastObject" },
             { KeyCode.LeftShift, "connectWalls" },
@@ -349,7 +347,8 @@ public class editModeController : MonoBehaviour
     private void spawnObject()
     {
         int selection = getSelection();
-        GameObject tempOb = transform.GetComponent<townGeneration>().instantiateObject(objectPrefabs[selection], Vector3.zero, Quaternion.identity, "Details", true);
+        //GameObject tempOb = transform.GetComponent<townGeneration>().instantiateObject(objectPrefabs[selection], Vector3.zero, Quaternion.identity, "Details", true);
+        GameObject tempOb = MGScript.CreateNewObject(objectPrefabs[selection], Vector3.zero, Quaternion.identity, "Details");
         curSceneObject = tempOb;
     }
 

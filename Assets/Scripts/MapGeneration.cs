@@ -755,7 +755,7 @@ public class MapGeneration : MonoBehaviour
     }
 
     // Instantiate new GameObject, applying necessary extra steps for organisation and function
-    private GameObject CreateNewObject(GameObject obj, Vector3 pos, Quaternion rot, string tagTemp)
+    public GameObject CreateNewObject(GameObject obj, Vector3 pos, Quaternion rot, string tagTemp)
     {
         if (tagTemp == null)
         {
