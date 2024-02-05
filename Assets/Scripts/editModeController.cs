@@ -45,7 +45,7 @@ public class editModeController : MonoBehaviour
 
     public void updateTerrainObject()
     {
-        terrain = MGScript.GetCurrentTerrain();
+        terrain = GameObject.Find("Terrain").GetComponent<Terrain>();
         if (terrain)
         {
             terrainBounds = terrain.terrainData.size;

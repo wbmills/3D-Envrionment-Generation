@@ -24,7 +24,7 @@ public class Road
     // width and length of road, where 
     public float width;
     public float length;
-
+    
     public Vector3 road;
 }
 
@@ -44,8 +44,8 @@ public class MapConfig
     public float density;
     public float uniformity;
     public string theme;
-    public float maxRoadLength;
-    public float maxRoadWidth;
+    public float length;
+    public float width;
     public float minRoadLength;
     public float minRoadWidth;
     public GameObject[] obsOfTheme;
@@ -62,7 +62,7 @@ public class MapGeneration : MonoBehaviour
     private List<GameObject> allObjectsInMap;
     private List<Road> allRoads;
     private GameObject[] obsOfTheme;
-    private MapConfig curConfig;
+    public MapConfig curConfig;
     private List<Vector3> unusedPoints;
     public bool debug = false;
     private GameObject[] objectPrefabs;
@@ -77,6 +77,18 @@ public class MapGeneration : MonoBehaviour
         {
             NewMap();
         }
+    }
+    private MapConfig SetCurrentMapConfig()
+    {
+        MapConfig tempConfig = new MapConfig();
+        tempConfig.width = 2f;
+        tempConfig.length = 100f;
+        tempConfig.theme = "Default";
+        tempConfig.uniformity = 1; 
+        tempConfig.density = 0.3f;
+        tempConfig.initPoint = new Vector3(60f, 0f, 60f);
+        tempConfig.terrain = GameObject.Find("Terrain").GetComponent<Terrain>();
+        return tempConfig;
     }
 
     private void updatePrefabs()
@@ -179,7 +191,8 @@ public class MapGeneration : MonoBehaviour
         resetRoads();
         curConfig = SetCurrentMapConfig();
         obsOfTheme = GetObjectsOfTheme(curConfig.theme);
-        GenerateMap();
+        //GenerateMap();
+        GenerateMapV2();
     }
 
     private void SetDefaults()
@@ -205,8 +218,8 @@ public class MapGeneration : MonoBehaviour
 
     private Connection[,] GenerateMapTemplate()
     {
-        float maxRoadLength = curConfig.maxRoadLength;
-        float maxRoadWidth = curConfig.maxRoadWidth;
+        float maxRoadLength = curConfig.length;
+        float maxRoadWidth = curConfig.width;
         int arrWidth = Mathf.FloorToInt((mapTerrain.terrainData.size.x - maxRoadLength) / maxRoadLength);
         int arrHeight = Mathf.FloorToInt((mapTerrain.terrainData.size.z - maxRoadLength) / maxRoadLength);
         allPoints = new Vector3[arrWidth, arrHeight];
@@ -262,6 +275,118 @@ public class MapGeneration : MonoBehaviour
             }
         }
         GenerateFromArray(map);
+    }
+
+
+    private Connection[,] FillArray(int xin, int yin)
+    {
+        Connection temp;
+        Connection[,] full = new Connection[xin, yin];
+        for (int x = 0; x < full.GetLength(0); x++)
+        {
+            for (int y = 0; y < full.GetLength(1); y++)
+            {
+                temp = new Connection();
+                temp.index = new int[] {x, y};
+                full[x, y] = temp;
+
+            }
+        }
+        return full;
+    }
+
+    private static float LogisticSigmoid(float x)
+    {
+        return (float)(1.0 / (1.0 + Math.Exp(-x * 4) * 2));
+    }
+
+    // bottom0up map generation
+    private void GenerateMapV2()
+    {
+        Connection[,] arr = FillArray(10,10);
+        // weights for direction change
+        float[] weights = new float[] {1,1,1,1};
+        // direction Vector3 sort of
+        float[] directions = new float[] { -1, 1, -1, 1 };
+        arr[0, 0].position = new Vector3(500, 0, 500);
+        Vector3 startPos;
+        Vector3 endPos = Vector3.zero;
+        Connection prevC = arr[0,0];
+        int iterations = 0;
+        foreach(Connection c in arr)
+        {
+            startPos = prevC.position;
+            c.prevCon = prevC;
+            Vector3 distanceVector = SampleFromDistribution(mean:curConfig.length, sd:0) * Vector3.one;
+            weights = AdjustWeights(weights);
+
+            //bias not working, keep to zero
+            //weights = Softmin(weights, 0);
+
+            Vector3 transitionVector = new Vector3(
+                ((weights[0] * directions[0]) + (weights[1] * directions[1])) * distanceVector.x, 
+                0 * distanceVector.y,
+                ((weights[2] * directions[2]) + (weights[3] * directions[3])) * distanceVector.z);
+            
+            endPos = AggregateVectors(new Vector3[] {startPos, transitionVector});
+
+            c.position = endPos;
+            prevC.nextCon = c;
+            prevC = c;
+            iterations++;
+            if (iterations > 3000)
+            {
+                break;
+            }
+        }
+
+        GenerateFromArray(arr);
+    }
+
+    private float[] AdjustWeights(float[] weights)
+    {
+        for (int i = 0; i < weights.Length; i++)
+        {
+            weights[i] = LogisticSigmoid(weights[i] + SampleFromDistribution(0, 1));
+        }
+
+        return weights;
+    }
+
+    private float[] Softmin(float[] weights, float bias)
+    {
+        int winner = 0;
+        for (int i = 0; i < weights.Length; i++)
+        {
+            if ((bias - weights[i]) < (bias - weights[winner])){
+                winner = i;
+            }
+            else
+            {
+                weights[i] = 0;
+            }
+        }
+
+        return weights;
+    }
+
+    private Vector3 AggregateVectors(Vector3[] vectors)
+    {
+        float x = 0;
+        float y = 0;
+        float z = 0;
+        foreach(Vector3 v in vectors)
+        {
+            x += v.x;
+            y += v.y;
+            z += v.z;
+        }
+        return new Vector3(x, y, z);
+    }
+    private float SampleFromDistribution(float mean, float sd)
+    {
+        
+        return mean + (Random.Range(-sd, sd) * curConfig.uniformity);
     }
 
     // Generate map (in progress)
@@ -436,20 +561,6 @@ public class MapGeneration : MonoBehaviour
         return obsOfTheme;
     }
 
-    private MapConfig SetCurrentMapConfig()
-    {
-        MapConfig tempConfig = new MapConfig();
-        tempConfig.minRoadWidth = 20f;
-        tempConfig.maxRoadWidth = 7f;
-        tempConfig.minRoadLength = 60f;
-        tempConfig.maxRoadLength = 30f;
-        tempConfig.theme = "Village";
-        tempConfig.uniformity = .7f;
-        tempConfig.density = 0.3f;
-        tempConfig.initPoint = new Vector3(60f, 0f, 60f);
-        return tempConfig;
-    }
-
     public void PaintTerrain(Vector3 positionToPaint, Vector3 dir, bool reset=false)
     {
         Terrain terrain = mapTerrain;
@@ -465,8 +576,8 @@ public class MapGeneration : MonoBehaviour
         if (posX > 0 && posX < terrain.terrainData.alphamapWidth && posZ > 0 && posZ < terrain.terrainData.alphamapHeight)
         {
             //int c = Mathf.RoundToInt(curConfig.maxRoadWidth) * 2;
-            int c = (int)curConfig.maxRoadWidth;
-            int b = (int)curConfig.maxRoadLength;
+            int c = (int)curConfig.width;
+            int b = (int)curConfig.length;
             int xMax = (int)(c * dir.z) * 2 + (int)(b * dir.x) + (int)(1 * dir.x);
             int yMax = (int)(c * dir.x) * 2 + (int)(b * dir.z) + (int)(1 * dir.z);
             float[,,] splatmapData = terrain.terrainData.GetAlphamaps(posX, posZ, xMax, yMax);
@@ -504,7 +615,7 @@ public class MapGeneration : MonoBehaviour
         tempRoad.pointA = pointA;
         tempRoad.pointB = pointB;
         tempRoad.length = Vector3.Distance(pointA, pointB);
-        tempRoad.width = curConfig.maxRoadWidth;
+        tempRoad.width = curConfig.width;
         tempRoad.direction = (tempRoad.pointB - tempRoad.pointA).normalized;
         tempRoad.pointer = null;
         tempRoad.prev = prevRoad;
@@ -512,7 +623,7 @@ public class MapGeneration : MonoBehaviour
 
         if (!blank && checkInTerrain(tempRoad))
         {
-            SetRoadObjects(tempRoad, "Building", obsOfTheme, false);
+            //SetRoadObjects(tempRoad, "Building", obsOfTheme, false);
             PaintTerrain(tempRoad.road, tempRoad.direction);
             allRoads.Add(tempRoad);
         }
