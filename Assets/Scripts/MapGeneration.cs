@@ -49,6 +49,8 @@ public class MapConfig
     public float width;
     public float minRoadLength;
     public float minRoadWidth;
+    public float paintWidth;
+    public float paintLength;
     public GameObject[] obsOfTheme;
     public float gravWeight;
     public float angleWeight;
@@ -58,6 +60,7 @@ public class MapConfig
 public class MapGeneration : MonoBehaviour
 {
     //for testing, remove later 
+    public Connection[,] curMap;
     public GameObject tree;
     public GameObject debugOb;
     private Terrain mapTerrain;
@@ -67,30 +70,31 @@ public class MapGeneration : MonoBehaviour
     private GameObject[] obsOfTheme;
     public MapConfig curConfig;
     private List<Vector3> unusedPoints;
-    public bool debug = false;
     private GameObject[] objectPrefabs;
     Vector3[,] allPoints;
 
+    public float gravWeightDebug;
+    public float angleWeightDebug;
+    public int numOfRoads;
+    public Vector3 centrePoint;
+
     void Start()
     {
-        debug = false;
         SetMapTerrain();
         SetDefaults();
-        if (debug)
-        {
-            NewMap();
-        }
     }
     private MapConfig SetCurrentMapConfig()
     {
         MapConfig tempConfig = new MapConfig();
-        tempConfig.width = 10f;
-        tempConfig.length = 10;
+        tempConfig.width = 30f;
+        tempConfig.length = 30;
+        tempConfig.paintLength = 10f;
+        tempConfig.paintWidth = 5f;
         tempConfig.theme = "default";
         tempConfig.uniformity = 1;
         tempConfig.density = 0.3f;
-        tempConfig.angleWeight = 5;
-        tempConfig.gravWeight = 3;
+        tempConfig.angleWeight = 0;
+        tempConfig.gravWeight = angleWeightDebug;
         tempConfig.initPoint = new Vector3(60f, 0f, 60f);
         tempConfig.terrain = GameObject.Find("Terrain").GetComponent<Terrain>();
         return tempConfig;
@@ -300,68 +304,80 @@ public class MapGeneration : MonoBehaviour
         return full;
     }
 
-    private static float LogisticSigmoid(float x, float bias)
+    private double LogisticSigmoid(float x, float bias)
     {
-        return (float)(1.0 / (1.0 + (Math.Exp(-x * bias))));
+        double result = 1/(1+Mathf.Exp(-x * bias));
+        return result;
     }
 
     private void GenerateMapV3()
     {
         // generate array of nodes (positions relative to terrain)
         Connection[,] map = GenerateMapTemplate();
+        curMap = map;
         Connection curNode = map[0, 0];//map[Random.Range(0, map.GetLength(0)), Random.Range(0, map.GetLength(1))];
-        Connection candidate = null;
-        Connection[] neighborNodes = new Connection[8];
+        Connection candidate;
+        Connection[] neighborNodes;
         List<float[]> directions = GenerateCombinations(2);
         List<Connection> usedCons = new List<Connection>();
-        Vector3 centre = new Vector3(500, 0, 500);
-        Dictionary<Connection, float> neighborWeights = new Dictionary<Connection, float>();
-        float gravWeight = curConfig.gravWeight;
-        float angleWeight = curConfig.angleWeight;
+        Vector3 centre = centrePoint;
+        float[] neighborWeights;
+        float gravWeight = gravWeightDebug;
+        float angleWeight = angleWeightDebug;
+        int index;
         // arbratrary number for now, just for testing
         int i = 0;
-        while (i < 1000 && curNode != null)
+        while (i < numOfRoads && curNode != null)
         {
+            // get all position neighbors and calculate their respective weights
             neighborNodes = GetNeighbors(curCon: curNode, map: map, dirs: directions, usedCons: usedCons);
-
-            //print($"{curNode} {map.Length} {directions.Count} {usedCons.Count}");
             neighborWeights = CalculateNeighborWeights(cur: curNode, cons: neighborNodes, centre: centre, gravWeight, angleWeight);
-            if (neighborNodes.Length != 0 && neighborWeights.Count != 0)
+            if (neighborNodes.Length != 0)
             {
-                int index = GetNumberInArray(neighborWeights);
-                //int index = GetBestNeighbor2(neighborWeights);
-                if (index != -1)
-                {
-                    // get Connection from dictionary
-                    Connection[] keysArray = GetKeysArray(neighborWeights);
-                    candidate = keysArray[index];
-                    //usedCons.Add(candidate);
+                //index = WinningNode(neighborWeights);
+                index = Softmax(neighborWeights);
+                candidate = neighborNodes[index];
+                usedCons.Add(candidate);
 
-                    curNode.nextCon = candidate;
-                    candidate.prevCon = curNode;
-                    curNode = candidate;
-                }
+                curNode.nextCon = candidate;
+                candidate.prevCon = curNode;
+                curNode = candidate;
             }
-            else
-            {
-                curNode = map[Random.Range(0, map.GetLength(0) - 1), Random.Range(0, map.GetLength(1) - 1)];
-            }
-
             i++;
         }
-        print($"{i} - {curNode}");
         GenerateFromArray(map);
     }
 
-    static TKey[] GetKeysArray<TKey, TValue>(Dictionary<TKey, TValue> dictionary)
+    private static int Softmax(float[] weights)
     {
-        TKey[] keysArray = new TKey[dictionary.Count];
-        int index = 0;
-        foreach (var key in dictionary.Keys)
+        // Compute softmax probabilities
+        float[] probabilities = new float[weights.Length];
+        float sumExp = 0.0f;
+        for (int i = 0; i < weights.Length; i++)
         {
-            keysArray[index++] = key;
+            probabilities[i] = (float)Math.Exp(weights[i]);
+            sumExp += probabilities[i];
         }
-        return keysArray;
+
+        // Normalize probabilities
+        for (int i = 0; i < probabilities.Length; i++)
+        {
+            probabilities[i] /= sumExp;
+        }
+
+        // Find the index of the highest probability (winning node)
+        float maxProbability = float.MinValue;
+        int winningNodeIndex = -1;
+        for (int i = 0; i < probabilities.Length; i++)
+        {
+            if (probabilities[i] > maxProbability)
+            {
+                maxProbability = probabilities[i];
+                winningNodeIndex = i;
+            }
+        }
+
+        return winningNodeIndex;
     }
 
     // return all possible neighbors of given node
@@ -369,10 +385,9 @@ public class MapGeneration : MonoBehaviour
     {
         List<Connection> neighborNodes = new List<Connection>();
         Connection tempCon;
-        int[] i = curCon.index;
         Vector3 curVector;
-        int indexX = 0;
-        int indexY = 0;
+        int indexX;
+        int indexY;
         foreach (float[] dir in dirs)
         {
             curVector = new Vector3(dir[0], 0, dir[1]);
@@ -382,7 +397,7 @@ public class MapGeneration : MonoBehaviour
             {
                 tempCon = map[indexX, indexY];
                 // might cause issues?? - no connections can be made so there will always be space
-                if (!usedCons.Contains(tempCon))
+                if (!usedCons.Contains(tempCon) && tempCon != null)
                 {
                     neighborNodes.Add(tempCon);
                 }
@@ -398,6 +413,7 @@ public class MapGeneration : MonoBehaviour
         List<float[]> combinationsList = new List<float[]>();
         float[] currentCombination = new float[length];
         GenerateCombinationsRecursive(combinationsList, currentCombination, 0);
+        print($"combo Count: {combinationsList.Count}");
         return combinationsList;
     }
 
@@ -417,242 +433,124 @@ public class MapGeneration : MonoBehaviour
         }
     }
 
-    // the magical work of ChatGPT (adapted for this purpose)
-    static int GetNumberInArray(Dictionary<Connection, float> dict)
+    private static Vector3 GetReciprocalIntersectPoint(Vector3 p1, Vector3 p2, Vector3 mid)
     {
-        Connection[] array = GetKeysArray(dict);
+        // y = mx + c
+        float m = (p1.x - p2.x) / (p1.z - p2.z);
+        float c = p1.z - (m * p1.x);
 
-        // Step 1: Normalize the array
-        float[] probabilities = new float[array.Length];
-        float sum = 0;
+        // recipricol
+        float r = -1 / m;
+        float rc = mid.z - (r * mid.x);
 
-        for (int i = 0; i < array.Length; i++)
-        {
-            sum += dict[array[i]];
-        }
+        // finding intersect
+        float finalx = (rc - c) / (m - r);
+        float finalz = (finalx * m) + c;
 
-        for (int i = 0; i < array.Length; i++)
-        {
-            probabilities[i] = dict[array[i]] / sum;
-        }
-
-        // Step 2: Generate a random number between 0 and 1
-        float randomValue = Random.Range(0f, 1f);
-
-        // Step 3: Iterate through the normalized array
-        float cumulativeProbability = 0;
-
-        for (int i = 0; i < probabilities.Length - 1; i++)
-        {
-            cumulativeProbability += probabilities[i];
-            //print(cumulativeProbability);
-            // Step 4: Return the corresponding integer when random number falls within the range
-            if (randomValue <= cumulativeProbability)
-            {
-                return i;
-            }
-        }
-
-        // This should not happen, but return -1 if something goes wrong
-        return Random.Range(0, dict.Count - 1);
+        return new Vector3(finalx, 0, finalz);
     }
 
-    // literally pointless, maybe use later just in case I change my mind
-    // returns greatest value in dictionary (like SoftMax for Connection probabilities)
-    private int GetBestNeighbor(Dictionary<Connection, float> dict)
+    private static float[] GetRelativeDirections(Connection[] cons, Vector3 centre, Vector3 curPos)
     {
-        Connection[] arr = GetKeysArray(dict);
-        if (dict.Count == 0) {
-            Debug.Log("Empty Connection Dictionary :/");
-            return Random.Range(0, 3);
-        }
-        Connection node;
-        List<Connection> winners = new List<Connection>() { arr[0] };
-        for (int i = 0; i < dict.Count; i++)
+        Vector3 midPoint;
+        float tempAngle;
+        List<float> final = new List<float>();
+        float nodeDistance = Vector3.Distance(curPos, cons[0].position);
+        Vector3 nearestToCentre = (centre - curPos).normalized * nodeDistance;
+        Vector3 dir = (centre - curPos).normalized;
+        float distanceRelativeToCurPos;
+        foreach(Connection c in cons)
         {
-            node = arr[i];
-            if (dict[node] < dict[winners[0]])
-            {
-                winners.Clear();
-                winners.Add(arr[i]);
-            }
-            else if (arr[i] == winners[0])
-            {
-                winners.Add(arr[i]);
-            }
+            //tempAngle = Vector3.SignedAngle(c.position, dir, centre);
+            midPoint = GetReciprocalIntersectPoint(p1: nearestToCentre, p2: c.position, mid: centre);
+            distanceRelativeToCurPos = Vector3.Distance(c.position, midPoint) - Vector3.Distance(midPoint, nearestToCentre);
+            final.Add(distanceRelativeToCurPos);
         }
 
-        return Random.Range(0, winners.Count - 1);
+        return final.ToArray();
     }
 
-    private int GetBestNeighbor2(Dictionary<Connection, float> dict)
-    {
-        Connection[] arr = GetKeysArray(dict);
-        if (dict.Count == 0)
-        {
-            Debug.Log("Empty Connection Dictionary :/");
-            return Random.Range(0, 3);
-        }
-
-        List<Connection> winners = new List<Connection>() { arr[0] };
-        float minDistance = dict[arr[0]];
-
-        for (int i = 1; i < arr.Length; i++)
-        {
-            float distance = dict[arr[i]];
-            if (distance < minDistance)
-            {
-                // Found a new minimum distance
-                winners.Clear();
-                winners.Add(arr[i]);
-                minDistance = distance;
-            }
-            else if (distance == minDistance)
-            {
-                // Another winner with the same distance
-                winners.Add(arr[i]);
-            }
-        }
-        return Random.Range(0, winners.Count);
-    }
-
-
-        private static Dictionary<Connection, float> CalculateNeighborWeights(Connection cur, Connection[] cons, Vector3 centre, float gravWeight, float angleWeight)
+    private float[] CalculateNeighborWeights(Connection cur, Connection[] cons, Vector3 centre, float gravWeight, float angleWeight)
     {
         Vector3 dir;
+        double weight;
         Dictionary<Connection, float> neighborWeights = new Dictionary<Connection, float>();
-        foreach(Connection c in cons)
+        float[] neighborWeightsFloat = new float[cons.Length];
+        float[] distances = CalculateNormalizedDistances(cons, centre);
+        int i = 0;
+
+        foreach (Connection c in cons)
         {
             if (c != null && !neighborWeights.ContainsKey(c))
             {
                 dir = (cur.position - c.position).normalized;
-                neighborWeights.Add(c, GetAttractorWeight(c.position, dir, centre, gravWeight, angleWeight));
+                weight = CalculateWeight(c.position, dir, distances[i], gravWeight, angleWeight);
+                neighborWeightsFloat[i] = (float)weight;
             }
+            else
+            {
+                neighborWeightsFloat[i] = 0;
+            }
+            i++;
         }
 
-        return neighborWeights;
+        for (i = 0; i < neighborWeightsFloat.Length; i++)
+        {
+            neighborWeightsFloat[i] = Normalise(neighborWeightsFloat[i], neighborWeightsFloat);
+        }
+
+        return neighborWeightsFloat;
+    }
+
+    private static float Normalise(float w, float[] set)
+    {
+        w = (w - set.Min()) / (set.Max() - set.Min());
+        return w;
     }
 
     // gravity and angle should be constant for any given map, weight can change. 
-    private static float GetAttractorWeight(Vector3 position, Vector3 direction, Vector3 centre, float gravityWeight, float angleWeight)
+    private double CalculateWeight(Vector3 position, Vector3 direction, float distance, float gravityWeight, float angleWeight)
     {
-        // the further away, the higher the sigmoid will be
-        float distanceFromCentre = Vector3.Distance(position, centre)/100;
-        // the further from 90 degrees, the larger the values
-        float angle = Vector3.Angle(Vector3.forward, direction) * Mathf.Deg2Rad;
-        float angleFrom90 = Mathf.Sin(angle) * Mathf.Rad2Deg / 100;
-        // average sigmoid from two values with biases towards map weights.
-        return (LogisticSigmoid(distanceFromCentre, gravityWeight) + LogisticSigmoid(angleFrom90, angleWeight)) / 2;
+        float angle = DistanceTo90(Vector3.Angle(Vector3.forward, direction));
+        double w1 = LogisticSigmoid(1 - distance, gravityWeight);
+        double w2 = LogisticSigmoid(angle, angleWeight);
+        return w1*w2;
     }
 
-    // bottom-up map generation
-    private void GenerateMapV2()
+    // in radians
+    private static float DistanceTo90(float angle)
     {
-        Connection[,] arr = FillArray(25, 25);
-        float[] weights = new float[] { 0, 0, 0, 0 };
-        float[] directions = new float[] { 1, -1 };
-        arr[0, 0].position = new Vector3(0, 0, 0);
-        Vector3 endPos;
-        Connection prevC = arr[0, 0];
-        int iterations = 0;
-        float[] sigmoidWeights = new float[weights.Length];
-        Vector3 centre = new Vector3(500, 0, 500);
-        foreach (Connection c in arr)
-        {
-            c.prevCon = arr[0, 0];
-            float d = SampleFromDistribution(mean: 400, sd: 100);
-/*            for (int i = 0; i < weights.Length; i++)
-            {
-                sigmoidWeights[i] = LogisticSigmoid(weights[i], 2);
-            }*/
-
-            float radians = Random.Range(0,360) * Mathf.Deg2Rad;
-
-            float dx = d * Mathf.Cos(radians);
-            float dz = d * Mathf.Sin(radians);
-
-            endPos = new Vector3(centre.x + dx, 0f, centre.z + dz);
-            //Instantiate(debugOb, endPos, Quaternion.identity);
-            c.position = endPos;
-            prevC.nextCon = c;
-            prevC = c;
-
-            iterations++;
-            if (iterations > 3000)
-            {
-                break;
-            }
-        }
-
-        GenerateFromArray(arr);
+        return Mathf.Abs(Mathf.Sin(2 * angle * Mathf.Deg2Rad));
     }
 
-    private float[] ChangeWeights(float[] weights, float[] finalWeights)
+    private static float CalculateProximityTo90(float angle)
     {
-        for (int i = 0; i < weights.Length; i++)
-        {
-            weights[i] += Random.Range(0,10);
-        }
+        // Calculate the difference between the input angle and the nearest multiple of 90 degrees
+        float nearest90 = (float)Math.Round(angle / 90.0f) * 90.0f;
+        float difference = Math.Abs(angle - nearest90);
 
-        return weights;
+        // Normalize the difference to a value between 0 and 1
+        float normalizedDifference = 1-difference / 45.0f; // 45 degrees is halfway between two 90-degree intervals
+
+        // Ensure the value is within the range [0, 1]
+        normalizedDifference = Math.Min(1.0f, Math.Max(0.0f, normalizedDifference));
+        return normalizedDifference;
     }
 
-    private Connection[,] FitToTerrain(Connection[,] cons)
+    private static float[] CalculateNormalizedDistances(Connection[] cons, Vector3 centre)
     {
-        Vector3 t = curConfig.terrain.terrainData.size;
-        foreach (Connection c in cons)
+        float[] final = new float[cons.Length];
+        for (int i = 0; i < final.Length; i++)
         {
-            c.position = new Vector3(
-                c.position.x/t.x,
-                c.position.y / t.y * 0,
-                c.position.z / t.z
-                );
+            final[i] = Vector3.Distance(cons[i].position, centre);
         }
-
-        return cons;
-    }
-
-
-    // Get largest value from weights, if values are equal then coin toss between them.
-    private float[] SoftMax(float[] weights)
-    {
-        int winner = 0;
-        float[] final = new float[] {0, 0, 0, 0};
-
-        for (int i = 0; i < weights.Length; i++)
+        for (int i = 0; i < final.Length; i++)
         {
-            if (weights[winner] <= weights[i])
-            {
-                winner = i;
-            }
+            final[i] = Normalise(final[i], final);
         }
-
-        final[winner] = 1;
         return final;
     }
 
-    private Vector3 AggregateVectors(Vector3[] vectors)
-    {
-        float x = 0;
-        float y = 0;
-        float z = 0;
-        foreach(Vector3 v in vectors)
-        {
-            x += v.x;
-            y += v.y;
-            z += v.z;
-        }
-        return new Vector3(x, y, z);
-    }
-    private float SampleFromDistribution(float mean, float sd)
-    {
-        
-        return mean + (Random.Range(-sd, sd) * curConfig.uniformity);
-    }
-
-    // Generate map (in progress)
-    /*private void GenerateMap(float mapDensity, float uniformity, float roadAngularity, float maxRoadWidth,
-        float minRoadWidth, float maxRoadLength, float minRoadLength, Vector3 centre = default, float randomness = 0f, float angleResolution = 1f, string theme = "Default")*/
     private void GenerateMap()
     {
         string theme = curConfig.theme;
@@ -1025,6 +923,7 @@ public class MapGeneration : MonoBehaviour
     {
         RoadDebug();
         //pointsDebug();
+        //mapDebug();
     }
 
     private void pointsDebug()
@@ -1034,6 +933,20 @@ public class MapGeneration : MonoBehaviour
             foreach (Vector3 point in allPoints)
             {
                 Gizmos.DrawWireCube(new Vector3(point.x, 10, point.z), Vector3.one * 2);
+            }
+        }
+    }
+
+    private void mapDebug()
+    {
+        if (curMap != null)
+        {
+            foreach(Connection c in curMap)
+            {
+                if (c != null)
+                {
+                    Gizmos.DrawWireCube(c.position, Vector3.one * 2);
+                }
             }
         }
     }
@@ -1236,6 +1149,48 @@ public class MapGeneration : MonoBehaviour
         return false;
     }
 }
+
+// bottom-up map generation
+/*private void GenerateMapV2()
+{
+    Connection[,] arr = FillArray(25, 25);
+    float[] weights = new float[] { 0, 0, 0, 0 };
+    float[] directions = new float[] { 1, -1 };
+    arr[0, 0].position = new Vector3(0, 0, 0);
+    Vector3 endPos;
+    Connection prevC = arr[0, 0];
+    int iterations = 0;
+    float[] sigmoidWeights = new float[weights.Length];
+    Vector3 centre = new Vector3(500, 0, 500);
+    foreach (Connection c in arr)
+    {
+        c.prevCon = arr[0, 0];
+        float d = SampleFromDistribution(mean: 400, sd: 100);
+        *//*            for (int i = 0; i < weights.Length; i++)
+                    {
+                        sigmoidWeights[i] = LogisticSigmoid(weights[i], 2);
+                    }*//*
+
+        float radians = Random.Range(0, 360) * Mathf.Deg2Rad;
+
+        float dx = d * Mathf.Cos(radians);
+        float dz = d * Mathf.Sin(radians);
+
+        endPos = new Vector3(centre.x + dx, 0f, centre.z + dz);
+        //Instantiate(debugOb, endPos, Quaternion.identity);
+        c.position = endPos;
+        prevC.nextCon = c;
+        prevC = c;
+
+        iterations++;
+        if (iterations > 3000)
+        {
+            break;
+        }
+    }
+
+    GenerateFromArray(arr);
+}*/
 
 
 /*while (allRoads.Count < maxRoads && i < maxRoads && spaces > 2)

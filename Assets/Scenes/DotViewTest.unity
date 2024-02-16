@@ -173,7 +173,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   tree: {fileID: 7795586190293983438, guid: 3f02b327b98eaad4aae88479fcdee0a6, type: 3}
   debugOb: {fileID: 919132149155446097, guid: 28e6e8fab1f977a4ab2ab09199a90bd2, type: 3}
-  debug: 0
+  gravWeightDebug: 1
+  angleWeightDebug: 1
+  numOfRoads: 30
+  centrePoint: {x: 500, y: 0, z: 500}
 --- !u!4 &38529958
 Transform:
   m_ObjectHideFlags: 0
