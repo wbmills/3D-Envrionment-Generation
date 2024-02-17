@@ -334,7 +334,6 @@ public class MapGeneration : MonoBehaviour
             neighborWeights = CalculateNeighborWeights(cur: curNode, cons: neighborNodes, centre: centre, gravWeight, angleWeight);
             if (neighborNodes.Length != 0)
             {
-                //index = WinningNode(neighborWeights);
                 index = Softmax(neighborWeights);
                 candidate = neighborNodes[index];
                 usedCons.Add(candidate);
@@ -367,7 +366,7 @@ public class MapGeneration : MonoBehaviour
 
         // Find the index of the highest probability (winning node)
         float maxProbability = float.MinValue;
-        int winningNodeIndex = -1;
+        int winningNodeIndex = 0;
         for (int i = 0; i < probabilities.Length; i++)
         {
             if (probabilities[i] > maxProbability)
@@ -413,7 +412,6 @@ public class MapGeneration : MonoBehaviour
         List<float[]> combinationsList = new List<float[]>();
         float[] currentCombination = new float[length];
         GenerateCombinationsRecursive(combinationsList, currentCombination, 0);
-        print($"combo Count: {combinationsList.Count}");
         return combinationsList;
     }
 
@@ -435,9 +433,15 @@ public class MapGeneration : MonoBehaviour
 
     private static Vector3 GetReciprocalIntersectPoint(Vector3 p1, Vector3 p2, Vector3 mid)
     {
+
         // y = mx + c
         float m = (p1.x - p2.x) / (p1.z - p2.z);
         float c = p1.z - (m * p1.x);
+
+        if (m == 0)
+        {
+            return new Vector3(mid.x, 0, p1.z);
+        }
 
         // recipricol
         float r = -1 / m;
@@ -449,24 +453,33 @@ public class MapGeneration : MonoBehaviour
 
         return new Vector3(finalx, 0, finalz);
     }
+    public static Vector3 ReplaceNaNWithZero(Vector3 vector)
+    {
+        if (float.IsNaN(vector.x))
+            vector.x = 0;
 
+        if (float.IsNaN(vector.y))
+            vector.y = 0;
+
+        if (float.IsNaN(vector.z))
+            vector.z = 0;
+
+        return vector;
+    }
     private static float[] GetRelativeDirections(Connection[] cons, Vector3 centre, Vector3 curPos)
     {
         Vector3 midPoint;
-        float tempAngle;
         List<float> final = new List<float>();
         float nodeDistance = Vector3.Distance(curPos, cons[0].position);
-        Vector3 nearestToCentre = (centre - curPos).normalized * nodeDistance;
-        Vector3 dir = (centre - curPos).normalized;
+        Vector3 nearestToCentre = curPos + ((centre - curPos).normalized * nodeDistance);
         float distanceRelativeToCurPos;
         foreach(Connection c in cons)
         {
-            //tempAngle = Vector3.SignedAngle(c.position, dir, centre);
             midPoint = GetReciprocalIntersectPoint(p1: nearestToCentre, p2: c.position, mid: centre);
+            midPoint = ReplaceNaNWithZero(midPoint);
             distanceRelativeToCurPos = Vector3.Distance(c.position, midPoint) - Vector3.Distance(midPoint, nearestToCentre);
             final.Add(distanceRelativeToCurPos);
         }
-
         return final.ToArray();
     }
 
@@ -476,7 +489,8 @@ public class MapGeneration : MonoBehaviour
         double weight;
         Dictionary<Connection, float> neighborWeights = new Dictionary<Connection, float>();
         float[] neighborWeightsFloat = new float[cons.Length];
-        float[] distances = CalculateNormalizedDistances(cons, centre);
+        //float[] distances = CalculateNormalizedDistances(cons, centre);
+        float[] distances = GetRelativeDirections(cons, centre, cur.position);
         int i = 0;
 
         foreach (Connection c in cons)
@@ -511,16 +525,18 @@ public class MapGeneration : MonoBehaviour
     // gravity and angle should be constant for any given map, weight can change. 
     private double CalculateWeight(Vector3 position, Vector3 direction, float distance, float gravityWeight, float angleWeight)
     {
-        float angle = DistanceTo90(Vector3.Angle(Vector3.forward, direction));
+        float angle = DistanceTo90(Vector3.Angle(direction, Vector3.forward));
         double w1 = LogisticSigmoid(1 - distance, gravityWeight);
         double w2 = LogisticSigmoid(angle, angleWeight);
+        print(w2);
         return w1*w2;
     }
 
     // in radians
     private static float DistanceTo90(float angle)
     {
-        return Mathf.Abs(Mathf.Sin(2 * angle * Mathf.Deg2Rad));
+        //print(Mathf.Abs(90 - angle) * Mathf.Deg2Rad);
+        return (90-angle) * Mathf.Deg2Rad;
     }
 
     private static float CalculateProximityTo90(float angle)
