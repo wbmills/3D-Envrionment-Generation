@@ -83,13 +83,31 @@ public class MapGeneration : MonoBehaviour
         SetMapTerrain();
         SetDefaults();
     }
+
+    private MapConfig coolConfig()
+    {
+        MapConfig tempConfig = new MapConfig();
+        tempConfig.width = 30f;
+        tempConfig.length = 30f;
+        tempConfig.paintLength = 5f;
+        tempConfig.paintWidth = 2f;
+        tempConfig.theme = "default";
+        tempConfig.uniformity = 1;
+        tempConfig.density = 0.3f;
+        tempConfig.angleWeight = 0;
+        tempConfig.gravWeight = angleWeightDebug;
+        tempConfig.initPoint = new Vector3(60f, 0f, 60f);
+        tempConfig.terrain = GameObject.Find("Terrain").GetComponent<Terrain>();
+        return tempConfig;
+    }
+
     private MapConfig SetCurrentMapConfig()
     {
         MapConfig tempConfig = new MapConfig();
         tempConfig.width = 30f;
-        tempConfig.length = 30;
-        tempConfig.paintLength = 10f;
-        tempConfig.paintWidth = 5f;
+        tempConfig.length = 30f;
+        tempConfig.paintLength = 5f;
+        tempConfig.paintWidth = 2f;
         tempConfig.theme = "default";
         tempConfig.uniformity = 1;
         tempConfig.density = 0.3f;
@@ -200,8 +218,8 @@ public class MapGeneration : MonoBehaviour
         resetRoads();
         curConfig = SetCurrentMapConfig();
         obsOfTheme = GetObjectsOfTheme(curConfig.theme);
-        //GenerateMap();
-        GenerateMapV3();
+        GenerateMap();
+        //GenerateHills();
     }
 
     private void SetDefaults()
@@ -223,6 +241,17 @@ public class MapGeneration : MonoBehaviour
             }
         }
         print($"Roads: {roads}");
+    }
+
+    private void HillsFromArray(Connection[,] arr)
+    {
+        foreach (Connection c in arr)
+        {
+            if (c != null && c.nextCon != null)
+            {
+                MakeHills(c.position);
+            }
+        }
     }
 
     private Connection[,] GenerateMapTemplate()
@@ -304,18 +333,36 @@ public class MapGeneration : MonoBehaviour
         return full;
     }
 
+    private void MakeHills(Vector3 posToRise, bool reset = false)
+    {
+        Terrain terrain = mapTerrain;
+        var size = 20;
+        Vector3 terrainPos = posToRise - terrain.transform.position;
+        Vector3 mapPos = new Vector3(terrainPos.x / terrain.terrainData.size.x, 0, terrainPos.z / terrain.terrainData.size.z);
+        float xCoord = mapPos.x * terrain.terrainData.heightmapResolution;
+        float zCoord = mapPos.z * terrain.terrainData.heightmapResolution;
+        int posX = (int)xCoord;
+        int posZ = (int)zCoord;
+        float[,] heights = terrain.terrainData.GetHeights(posX, posZ, size, size);
+
+        for (int i = 0; i < size; i++)
+            for (int j = 0; j < size; j++)
+                heights[i, j] = 30;
+    }
+
     private double LogisticSigmoid(float x, float bias)
     {
         double result = 1/(1+Mathf.Exp(-x * bias));
         return result;
     }
 
-    private void GenerateMapV3()
+    private void GenerateHills()
     {
         // generate array of nodes (positions relative to terrain)
         Connection[,] map = GenerateMapTemplate();
         curMap = map;
         Connection curNode = map[0, 0];//map[Random.Range(0, map.GetLength(0)), Random.Range(0, map.GetLength(1))];
+
         Connection candidate;
         Connection[] neighborNodes;
         List<float[]> directions = GenerateCombinations(2);
@@ -327,28 +374,71 @@ public class MapGeneration : MonoBehaviour
         int index;
         // arbratrary number for now, just for testing
         int i = 0;
-        while (i < numOfRoads && curNode != null)
+        Vector2Int[] poses = new Vector2Int[] { 
+            new Vector2Int(0, 0),
+            new Vector2Int(10,10),
+        };
+        foreach (Vector2Int startPos in poses)
         {
-            // get all position neighbors and calculate their respective weights
-            neighborNodes = GetNeighbors(curCon: curNode, map: map, dirs: directions, usedCons: usedCons);
-            neighborWeights = CalculateNeighborWeights(cur: curNode, cons: neighborNodes, centre: centre, gravWeight, angleWeight);
-            if (neighborNodes.Length != 0)
+            curNode = map[startPos.x, startPos.y];
+            i = 0;
+            while (i < numOfRoads && curNode != null)
             {
-                index = Softmax(neighborWeights);
-                candidate = neighborNodes[index];
-                usedCons.Add(candidate);
+                // get all position neighbors and calculate their respective weights
+                neighborNodes = GetNeighbors(curCon: curNode, map: map, dirs: directions, usedCons: usedCons);
+                if (neighborNodes.Length != 0)
+                {
+                    neighborWeights = CalculateNeighborWeights(cur: curNode, cons: neighborNodes, centre: centre, gravWeight, angleWeight);
+                    //index = Softmax(neighborWeights);
+                    index = FindIndexOfGreatestWeight(neighborWeights);
+                    candidate = neighborNodes[index];
+                    usedCons.Add(candidate);
 
-                curNode.nextCon = candidate;
-                candidate.prevCon = curNode;
-                curNode = candidate;
+                    curNode.nextCon = candidate;
+                    candidate.prevCon = curNode;
+                    curNode = candidate;
+                }
+                i++;
             }
-            i++;
+            HillsFromArray(map);
         }
-        GenerateFromArray(map);
+        
     }
 
+    private static float[] ReplaceNaNWithZeroFloat(float[] array)
+    {
+        for (int i = 0; i < array.Length; i++)
+        {
+            if (float.IsNaN(array[i]))
+            {
+                array[i] = 0f;
+            }
+        }
+        return array;
+    }
+    public static int FindIndexOfGreatestWeight(float[] weights)
+    {
+        if (weights == null || weights.Length == 0)
+        {
+            throw new ArgumentException("Weights array is null or empty.");
+        }
+
+        int indexOfGreatestWeight = 0; // Initialize with the index of the first weight
+
+        // Iterate through the weights array
+        for (int i = 1; i < weights.Length; i++)
+        {
+            if (weights[i] > weights[indexOfGreatestWeight])
+            {
+                indexOfGreatestWeight = i; // Update index if a greater weight is found
+            }
+        }
+
+        return indexOfGreatestWeight;
+    }
     private static int Softmax(float[] weights)
     {
+        weights = ReplaceNaNWithZeroFloat(weights);
         // Compute softmax probabilities
         float[] probabilities = new float[weights.Length];
         float sumExp = 0.0f;
@@ -362,22 +452,25 @@ public class MapGeneration : MonoBehaviour
         for (int i = 0; i < probabilities.Length; i++)
         {
             probabilities[i] /= sumExp;
+            print(probabilities[i]);
         }
 
-        // Find the index of the highest probability (winning node)
-        float maxProbability = float.MinValue;
-        int winningNodeIndex = 0;
+        double randomValue = new System.Random().NextDouble();
+        float cumulativeProbability = 0.0f;
+
         for (int i = 0; i < probabilities.Length; i++)
         {
-            if (probabilities[i] > maxProbability)
+            cumulativeProbability += probabilities[i];
+            if (randomValue <= cumulativeProbability)
             {
-                maxProbability = probabilities[i];
-                winningNodeIndex = i;
+                return i; // Return the index of the first node with cumulative probability greater than or equal to the random value
             }
         }
 
-        return winningNodeIndex;
+        // This should never happen if probabilities are correctly calculated
+        throw new InvalidOperationException("Invalid probabilities. Unable to determine winning index.");
     }
+
 
     // return all possible neighbors of given node
     private static Connection[] GetNeighbors(Connection curCon, Connection[,] map, List<float[]> dirs, List<Connection> usedCons)
@@ -401,6 +494,10 @@ public class MapGeneration : MonoBehaviour
                     neighborNodes.Add(tempCon);
                 }
             }
+        }
+        if (neighborNodes.Count == 0)
+        {
+            return new Connection[] { map[Random.Range(0, map.GetLength(0)), Random.Range(0, map.GetLength(0))] };
         }
         return neighborNodes.ToArray();
     }
@@ -450,7 +547,6 @@ public class MapGeneration : MonoBehaviour
         // finding intersect
         float finalx = (rc - c) / (m - r);
         float finalz = (finalx * m) + c;
-
         return new Vector3(finalx, 0, finalz);
     }
     public static Vector3 ReplaceNaNWithZero(Vector3 vector)
@@ -470,14 +566,14 @@ public class MapGeneration : MonoBehaviour
     {
         Vector3 midPoint;
         List<float> final = new List<float>();
-        float nodeDistance = Vector3.Distance(curPos, cons[0].position);
+        float nodeDistance = 2;//Vector3.Distance(curPos, cons[0].position);
         Vector3 nearestToCentre = curPos + ((centre - curPos).normalized * nodeDistance);
         float distanceRelativeToCurPos;
         foreach(Connection c in cons)
         {
             midPoint = GetReciprocalIntersectPoint(p1: nearestToCentre, p2: c.position, mid: centre);
             midPoint = ReplaceNaNWithZero(midPoint);
-            distanceRelativeToCurPos = Vector3.Distance(c.position, midPoint) - Vector3.Distance(midPoint, nearestToCentre);
+            distanceRelativeToCurPos = Vector3.Distance(c.position, midPoint);
             final.Add(distanceRelativeToCurPos);
         }
         return final.ToArray();
@@ -489,8 +585,8 @@ public class MapGeneration : MonoBehaviour
         double weight;
         Dictionary<Connection, float> neighborWeights = new Dictionary<Connection, float>();
         float[] neighborWeightsFloat = new float[cons.Length];
-        //float[] distances = CalculateNormalizedDistances(cons, centre);
         float[] distances = GetRelativeDirections(cons, centre, cur.position);
+        distances = ScaleValuesToRange(distances, -4, 4);
         int i = 0;
 
         foreach (Connection c in cons)
@@ -522,14 +618,40 @@ public class MapGeneration : MonoBehaviour
         return w;
     }
 
+    public static float[] ScaleValuesToRange(float[] values, float newMin, float newMax)
+    {
+        // Find the minimum and maximum values in the array
+        float min = values[0];
+        float max = values[0];
+        for (int i = 1; i < values.Length; i++)
+        {
+            if (values[i] < min)
+                min = values[i];
+            if (values[i] > max)
+                max = values[i];
+        }
+
+        // Scale each value to fit within the new range
+        float[] scaledValues = new float[values.Length];
+        float oldRange = max - min;
+        float newRange = newMax - newMin;
+        for (int i = 0; i < values.Length; i++)
+        {
+            scaledValues[i] = ((values[i] - min) / oldRange) * newRange + newMin;
+        }
+
+        return scaledValues;
+    }
+
     // gravity and angle should be constant for any given map, weight can change. 
     private double CalculateWeight(Vector3 position, Vector3 direction, float distance, float gravityWeight, float angleWeight)
     {
+        //print(distance);
         float angle = DistanceTo90(Vector3.Angle(direction, Vector3.forward));
-        double w1 = LogisticSigmoid(1 - distance, gravityWeight);
+        double w1 = LogisticSigmoid(distance, gravityWeight);
         double w2 = LogisticSigmoid(angle, angleWeight);
-        print(w2);
-        return w1*w2;
+        //print($"{w1}\n{w2}");
+        return w1+ w2;
     }
 
     // in radians
@@ -680,6 +802,7 @@ public class MapGeneration : MonoBehaviour
         }
         nextCon = null;
         spawnTrees(map);
+        GenerateHills();
         GenerateFromArray(map);
     }
 
@@ -750,7 +873,6 @@ public class MapGeneration : MonoBehaviour
         int posZ = (int)zCoord;
         if (posX > 0 && posX < terrain.terrainData.alphamapWidth && posZ > 0 && posZ < terrain.terrainData.alphamapHeight)
         {
-            //int c = Mathf.RoundToInt(curConfig.maxRoadWidth) * 2;
             int c = (int)curConfig.width;
             int b = (int)curConfig.length;
             int xMax = (int)(c * dir.z) * 2 + (int)(b * dir.x) + (int)(1 * dir.x);
@@ -768,7 +890,17 @@ public class MapGeneration : MonoBehaviour
                     else
                     {
                         splatmapData[x, y, 0] = 0;
-                        splatmapData[x, y, 1] = 1;
+                        splatmapData[x, y, 1] = 1;/*
+                        try
+                        {
+                            splatmapData[x, y, 0] = 0;
+                            splatmapData[x, y, 1] = 1;
+                        }
+                        catch (Exception)
+                        {
+                            Debug.Log(true);
+                        }*/
+
                     }
                 }
             }
@@ -925,7 +1057,7 @@ public class MapGeneration : MonoBehaviour
                         //Instantiate(newOb);
                         if (generateWalls)
                         {
-                            BuildWall(wall, newOb, road);
+                            //BuildWall(wall, newOb, road);
                         }
                         lastOb = newOb;
                     }
@@ -977,7 +1109,7 @@ public class MapGeneration : MonoBehaviour
                 //Gizmos.DrawCube(r.centre, Vector3.one);
                 Gizmos.DrawSphere(r.pointB, 1f);
 
-                // x = r(cos(degrees°)), y = r(sin(degrees°)).
+/*                // x = r(cos(degreesï¿½)), y = r(sin(degreesï¿½)).
                 Vector3 direction = (r.pointB - r.pointA).normalized;
                 float angleFromCentre = Vector3.Angle(Vector3.forward, direction) * (Mathf.PI / 180);
                 float addX = r.width * Mathf.Sin(angleFromCentre + (90 * (Mathf.PI / 180)));
@@ -985,7 +1117,7 @@ public class MapGeneration : MonoBehaviour
                 Vector3 pointALeft = new Vector3(r.pointA.x + addX, r.pointA.y, r.pointA.z + addY);
                 Vector3 pointARight = new Vector3(r.pointA.x - addX, r.pointA.y, r.pointA.z - addY);
                 Gizmos.DrawWireCube(pointALeft, Vector3.one * 2);
-                Gizmos.DrawWireCube(pointARight, Vector3.one * 2);
+                Gizmos.DrawWireCube(pointARight, Vector3.one * 2);*/
             }
         }
     }
